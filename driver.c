@@ -1,0 +1,668 @@
+//WIP
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <ctype.h>
+#include <string.h>
+
+#define GRID_SIZE 10
+#define MAX_NAME_LENGTH 50
+#define TOTALNUMBEROFSHIPS 4
+
+
+//structures
+typedef struct {
+    char name[20];          // Ship name
+    int size;               // Ship size
+    char id;                // Ship identifier
+    int occupiedCells[5][3];
+    // (row, col, hit_status); 3rd column tracks hit status: 0 for not hit, 1 for hit max 5 cells for largest ship.              
+} Ship;
+
+typedef struct player {
+    char name[MAX_NAME_LENGTH];
+    int turn;                               //1 its their turn, 0 its not their turn.
+    char board[GRID_SIZE][GRID_SIZE];       //contains placement of ships across the 10x10 board //tentative could be removed.
+    char hits[GRID_SIZE][GRID_SIZE];        // grid with ~ for water, o for miss, * for hit.This is for hits and misses done by the opponent on this player's board
+    int numOfShipsSunken;                   //when initializing players, set to zero. Useful for victory checking.Ships sunken by the opponent of this player's ships.
+    Ship ships[TOTALNUMBEROFSHIPS];         //array of their ships. to be initialized.
+    int numOfRadars;                        //allowed 3 per game.to be initialized
+    int numOfSmokeScreensPerformed; 
+    int numOfArtillery;                     //only ever 1 or 0
+    int numOfTorpedo;                       //only ever 1 or 0
+    char obscuredArea[GRID_SIZE][GRID_SIZE];
+} Player;
+
+
+//useful variables                       
+char affectedArea[GRID_SIZE][GRID_SIZE];   // temporary grid for affected cells per each move.clears after every turn.
+char game_difficulty;                      //zero for easy, one for hard
+
+//All function prototypes
+char set_game_difficulty();
+void displayAvailableMoves();
+void initialize_player(Player* player);
+void initialize_board(char board[GRID_SIZE][GRID_SIZE]);
+void playerswitch(Player *attacker, Player *defender);
+void display_opponent_grid(char board[GRID_SIZE][GRID_SIZE], char game_difficulty);
+void displayBoard(Player *player);
+int column_to_index(char column);
+int validateShipPlacement(Player *player, Ship *ship, int startRow, int startCol, char orientation);
+void placeShipOnBoard(Player *player, Ship *ship, int startRow, int startCol, char orientation);
+void placeShips(Player *player);
+int is_fire(char* moveType);
+int is_artillery(char* moveType);
+int is_torpedo(char* moveType);
+int is_radar(char* moveType);
+int is_smoke(char* moveType);
+int is_equal(char* str1, char* str2);
+void FireMove(Player* attacker, Player* defender, int x, int y);
+void ArtilleryMove(Player* attacker, Player* defender, int x, int y);
+void TorpedoMove(Player* attacker, Player* defender, int x, int y);
+void RadarMove(Player *attacker, Player *defender, int x, int y);
+void SmokeMove(Player *attacker, int x, int y);
+void selectMove(Player *attacker, Player *defender);
+void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, char orientation);
+void markAffectedArea(int x, int y, char moveType, char orientation);
+int isShipSunk(Ship *ship);
+void HitOrMissMessageDisplay(int movesuccess);
+void startGame(Player *currentPlayer, Player *opponent);
+void stringcopy(char* dest,char* src);
+void to_lowercase(char* src, char* dest);
+
+
+char set_game_difficulty() {
+    char difficulty;
+    
+    while (1) {
+        printf("Enter game difficulty (E for Easy, H for Hard): ");
+        scanf(" %c", &difficulty); 
+        difficulty=toupper(difficulty);
+
+        if (difficulty == 'E' || difficulty == 'H') {
+            break; // Valid input, exit loop
+        } else {
+            printf("Invalid input. Please enter 'E' or 'H'.\n");
+        }
+    } 
+    return difficulty;
+}
+
+void main(){
+    srand(time(0));
+    char EXIT;
+    do
+    {
+        Player player1, player2;
+        game_difficulty=set_game_difficulty();
+
+        printf("Player 1, Enter your name: ");
+        scanf("%s", player1.name);
+        printf("Player 2, Enter your name: ");
+        scanf("%s", player2.name);
+
+        initialize_player(&player1);
+        initialize_player(&player2);
+
+    
+        printf("Randomly choosing the starting player\n");
+        if (rand() % 2 == 0) {
+            player1.turn = 1;
+            player2.turn = 0;
+            printf("%s goes first!\n", player1.name);
+        } else {
+            player1.turn = 0;
+            player2.turn = 1;
+            printf("%s goes first!\n", player2.name);
+        }
+        printf("Placing %s's ships\n", player1.name);
+        placeShips(&player1);
+        printf("Placing %s's ships\n", player2.name);
+        placeShips(&player2);
+    
+    
+        startGame(&player1,&player2);
+
+        //prompt if players would like to play again
+        printf("Would you like to play again ? ^-^ (Y/N)");
+        scanf("%c", &EXIT);
+
+    } while (EXIT=='Y' || EXIT=='y');
+    printf("Thanks for playing ^-^ ");   
+}
+void startGame(Player *player1, Player *player2) {
+    while (player1->numOfShipsSunken < TOTALNUMBEROFSHIPS && player2->numOfShipsSunken < TOTALNUMBEROFSHIPS) { //win condition
+        // Determine current attacker and defender based on the turn parameter in player struct
+        Player *attacker = player1->turn == 1 ? player1 : player2;
+        Player *defender = player1->turn == 1 ? player2 : player1;
+   
+        selectMove(attacker, defender); //this handles switching turns accordingly after a valid move
+    }
+
+    //display the winner
+    if (player1->numOfShipsSunken == TOTALNUMBEROFSHIPS) {
+        printf("%s wins!\n", player2->name);
+    } else {
+        printf("%s wins!\n", player1->name);
+    }
+    //to find out where each player hid their ships in the end
+    displayBoard(player1); 
+    displayBoard(player2);
+}
+
+void clear_screen() { //depedming on system change the command
+    #ifdef _WIN32
+        system("cls");
+    #else
+        system("clear");
+    #endif
+}
+void displayAvailableMoves() {
+    printf("Available Moves:\n");
+    printf("1. Fire: Attempts to hit an opponent's ship at a specified coordinate.\n");
+    printf("   Command: Fire [coordinate] (e.g., Fire B3)\n");
+    printf("2. Radar Sweep: Reveals if there are enemy ships in a 2x2 area.\n");
+    printf("   Command: Radar [top-left coordinate] (e.g. Radar B3)\n");
+    printf("   Note: Limited to 3 uses per player.\n");
+    printf("3. Smoke Screen: Obscures a 2x2 area of the grid from radar sweeps.\n");
+    printf("   Command: Smoke [top-left coordinate] (e.g. Smoke B3)\n");
+    printf("   Note: Allowed one screen per sunken ship.\n");
+    printf("4. Artillery: Targets a 2x2 area, functioning similarly to Fire.\n");
+    printf("   Command: Artillery [top-left coordinate] (e.g. Artillery B3)\n");
+    printf("   Note: Unlocked next turn if an opponent's ship is sunk.\n");
+    printf("5. Torpedo: Targets an entire row or column.\n");
+    printf("   Command: Torpedo [row/column] (e.g. Torpedo B)\n");
+    printf("   Note: Unlocked next turn if a third ship is sunk.\n");
+}
+
+void initialize_player(Player* player){
+    player->turn = 0; // Set turn to 0
+    player->numOfShipsSunken = 0; // Initialize sunk ships count
+    player->numOfArtillery=0;
+    player->numOfRadars=3;
+    player->numOfSmokeScreensPerformed=0;
+    player->numOfTorpedo=0;
+    initialize_board(player->board);        // Initialize player's board
+    initialize_board(player->hits);         // Initialize hits board
+    initialize_board(player->obscuredArea); // Initialize obscuredArea board
+
+    //filling the ship array
+    // Carrier
+    stringcopy(player->ships[0].name, "Carrier");
+    player->ships[0].size = 5;
+    player->ships[0].id = 'C';
+    for (int i = 0; i < 5; i++) {
+        player->ships[0].occupiedCells[i][0] = 0; // Row
+        player->ships[0].occupiedCells[i][1] = 0; // Column
+        player->ships[0].occupiedCells[i][2] = 0; // Hit status
+    }
+
+    // Battleship
+    stringcopy(player->ships[1].name, "Battleship");
+    player->ships[1].size = 4;
+    player->ships[1].id = 'B';
+    for (int i = 0; i < 4; i++) {
+        player->ships[1].occupiedCells[i][0] = 0; // Row
+        player->ships[1].occupiedCells[i][1] = 0; // Column
+        player->ships[1].occupiedCells[i][2] = 0; // Hit status
+    }
+
+    // Destroyer
+    stringcopy(player->ships[2].name, "Destroyer");
+    player->ships[2].size = 3;
+    player->ships[2].id = 'D';
+    for (int i = 0; i < 3; i++) {
+        player->ships[2].occupiedCells[i][0] = 0;
+        player->ships[2].occupiedCells[i][1] = 0;
+        player->ships[2].occupiedCells[i][2] = 0;
+    }
+
+    // Submarine
+    stringcopy(player->ships[3].name, "Submarine");
+    player->ships[3].size = 2;
+    player->ships[3].id = 'S';
+    for (int i = 0; i < 2; i++) {
+        player->ships[3].occupiedCells[i][0] = 0;
+        player->ships[3].occupiedCells[i][1] = 0;
+        player->ships[3].occupiedCells[i][2] = 0;
+    }
+
+}
+
+void initialize_board(char board[GRID_SIZE][GRID_SIZE]) {
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            board[i][j] = '~';
+        }
+    }
+}
+
+void playerswitch(Player *attacker, Player *defender) {
+    attacker->turn=1-attacker->turn;
+    defender->turn=1-defender->turn;
+}
+
+
+void display_opponent_grid(char board[GRID_SIZE][GRID_SIZE], char game_difficulty) { //tested
+    printf("   A B C D E F G H I J\n");
+    for (int i = 0; i < GRID_SIZE; i++) {
+        printf("%2d ", i + 1);
+        for (int j = 0; j < GRID_SIZE; j++) {
+            if (game_difficulty == 'E') { // Easy mode
+                if (board[i][j] == '*') {
+                    printf("* "); // Hits marked with '*'
+                } else if (board[i][j] == 'o') {
+                    printf("o "); // Misses marked with 'o'
+                } else {
+                    printf("~ "); // Water remains '~'
+                }
+            } else if (game_difficulty == 'H') { // Hard mode
+                if (board[i][j] == '*') {
+                    printf("* "); // Hits marked with '*'
+                } else {
+                    printf("~ "); // Water for all other cases
+                }
+            }
+        }
+        printf("\n");
+    }
+}
+
+void displayBoard(Player *player) {
+    printf("\n%s's Board:\n", player->name);
+    printf("   A B C D E F G H I J\n");
+    for (int i = 0; i < GRID_SIZE; i++) {
+        printf("%2d ", i + 1);
+        for (int j = 0; j < GRID_SIZE; j++) {
+            printf("%c ", player->board[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+int column_to_index(char column) { //for column inputs, convert them to indexes
+    return toupper(column) - 'A';
+}
+
+// Function to validate ship placement on the grid
+int validateShipPlacement(Player *player, Ship *ship, int startRow, int startCol, char orientation) { //tested
+    int row = startRow;
+    int col = startCol;
+
+    if (orientation != 'H' && orientation != 'V') {
+        printf("Error: Invalid orientation. Use 'H' for horizontal or 'V' for vertical.Please make sure they are uppercase\n");
+        return 0; // Invalid orientation
+    }
+
+    for (int i = 0; i < ship->size; i++) {
+        // Check if the position is within bounds
+        if (row >= GRID_SIZE || col >= GRID_SIZE || row < 0 || col < 0) {
+            printf("Error: Ship placement out of bounds.\n");
+            return 0;
+        }
+
+        // Check for overlap with other ships
+        if (player->board[row][col] != '~') {
+            printf("Error: Ship placement overlaps with another ship.\n");
+            return 0;
+        }
+
+        // Move to the next cell based on orientation
+        if (orientation == 'H') {
+            col++;
+        } else {
+            row++;
+        }
+    }
+    return 1; // Placement is valid
+}
+
+//place a ship on the player's board
+void placeShipOnBoard(Player *player, Ship *ship, int startRow, int startCol, char orientation) { //tested
+    int row = startRow;
+    int col = startCol;
+
+    for (int i = 0; i < ship->size; i++) {
+        // Place the ship identifier on the board
+        player->board[row][col] = ship->id;
+
+        // Update the occupied cells in the ship structure
+        ship->occupiedCells[i][0] = row;
+        ship->occupiedCells[i][1] = col;
+        ship->occupiedCells[i][2] = 0; // Set hit status to 0
+
+        // Move to the next cell based on orientation
+        if (orientation == 'H') {
+            col++;
+        } else {
+            row++;
+        }
+    }
+    displayBoard(player); 
+}
+
+// Function to handle the user input and call validation and placement functions //to be used in main
+void placeShips(Player *player) { //tested
+    displayBoard(player);
+    for (int i = 0; i < TOTALNUMBEROFSHIPS; i++) {
+        Ship *ship = &player->ships[i];
+        int startRow, startCol;
+        char colChar, orientation;
+
+        // Prompt for ship placement details
+        printf("Place your %s (size: %d). Enter starting position (e.g., B3) and orientation (H for horizontal, V for vertical): ", ship->name, ship->size);
+        scanf(" %c%d %c", &colChar, &startRow, &orientation);
+
+        // Convert row and column for board indexing
+        startCol = column_to_index(colChar);
+        startRow--;
+
+        // Validate and place the ship
+        if (validateShipPlacement(player, ship, startRow, startCol, orientation)) {
+            placeShipOnBoard(player, ship, startRow, startCol, orientation);
+            printf("%s placed at %c%d %c.\n", ship->name, colChar, startRow + 1, orientation);
+        } else {
+            printf("Invalid placement. Try again.\n");
+            i--; // Retry the same ship placement
+        }
+    }
+
+    // Clear console and display confirmation
+    void clear_screen();
+    printf("All ships placed for %s.\n", player->name);
+}
+
+
+
+// Function to check if the move is "Fire"
+int is_fire(char* moveType) {
+    return is_equal(moveType, "fire");
+}
+
+// Function to check if the move is "Artillery"
+int is_artillery(char* moveType) {
+    return is_equal(moveType, "artillery");
+}
+
+// Function to check if the move is "Torpedo"
+int is_torpedo(char* moveType) {
+    return is_equal(moveType, "torpedo");
+}
+
+// Function to check if the move is "Radar"
+int is_radar(char* moveType) {
+    return is_equal(moveType, "radar");
+}
+
+// Function to check if the move is "Smoke"
+int is_smoke(char* moveType) {
+    return is_equal(moveType, "smoke");
+}
+//checking if move inputs are okay
+int is_equal(char* str1, char* str2) {
+    char lowerStr1[20], lowerStr2[20];
+
+    // Convert both strings to lowercase
+    to_lowercase(str1, lowerStr1);
+    to_lowercase(str2, lowerStr2);
+
+    return (strcmp(lowerStr1, lowerStr2) == 0); // Compare the lowercase strings
+}
+
+// Converts a string to lowercase and stores it in the destination
+void to_lowercase(char* src, char* dest) {
+    for (int i = 0; src[i] != '\0'; i++) {
+        dest[i] = tolower((unsigned char)src[i]);
+    }
+    dest[strlen(src)] = '\0';
+}
+
+void FireMove(Player* attacker, Player* defender, int x, int y){ //single cell
+    HitOrMiss(attacker,defender,x, y, 'F', 'H');
+}
+void ArtilleryMove(Player* attacker, Player* defender, int x, int y){ //2x2 area
+    HitOrMiss(attacker,defender,x,y,'A','H');
+}
+void TorpedoMove(Player* attacker, Player* defender, int x, int y){ //row or column move
+    if (x==0) //it was a column move
+    {
+        HitOrMiss(attacker, defender, y, y,'T','V');
+    }else if (y==0) //it was a row move
+    {
+        HitOrMiss(attacker, defender, x, x,'T','H');
+    }
+}
+void RadarMove(Player *attacker, Player *defender, int x, int y){
+    int shipsFound = 0;
+
+    // Check the 2x2 area for ships
+    for (int i = 0; i <= 1; i++) {
+        for (int j = 0; j <= 1; j++) {
+            if (defender->board[x+i][y+j] != '~' && defender->obscuredArea[x+i][y+j]!='S') { //there is a ship that is not obscured
+                shipsFound = 1;
+            }
+        }
+    }
+
+    if (shipsFound) {
+        printf("Enemy ships found.\n");
+    } else {
+        printf("No enemy ships found.\n");
+    }
+
+}
+void SmokeMove(Player *attacker, int x, int y){
+    // Mark the 2x2 area as obscured
+    for (int i = 0; i <= 1; i++) {
+        for (int j = 0; j <= 1; j++) {
+            attacker->obscuredArea[x + i][y + j] = 'S'; // Marking as obscured
+        }
+    }
+    void clear_screen();
+    printf("Obscured successfully!");
+}
+
+void selectMove(Player *attacker, Player *defender) {
+    char moveType[20];
+    char coordinate[5]; 
+    int x, y;
+    int validMove = 0;
+    printf("Opponent's Grid:\n");
+    display_opponent_grid(defender->hits, game_difficulty);
+    printf("%s's turn\n",attacker->name);
+    displayAvailableMoves();
+
+    while (!validMove) {
+        
+        printf("\nEnter your move: ");
+        scanf("%10s %2s", moveType, coordinate);
+
+        
+        // Convert coordinate to indices for grid
+        x = column_to_index(coordinate[0]); 
+        y = atoi(&coordinate[1]) - 1; // Convert row to 0-based index
+        if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) {
+            printf("Invalid coordinates.\n");
+            continue;
+        }
+
+        // Select move based on input
+        if (is_fire(moveType)) {
+            FireMove(attacker, defender, x, y);
+            validMove = 1;
+            playerswitch(attacker,defender);
+        }else if (is_artillery(moveType) && attacker->numOfArtillery ==1) {
+            ArtilleryMove(attacker, defender, x, y);
+            attacker->numOfArtillery=0;
+            validMove = 1;
+            playerswitch(attacker,defender);
+        } else if (is_torpedo(moveType) && attacker->numOfTorpedo ==1) {
+            if (coordinate[1] == '\0') { // Single-letter column or number for Torpedo
+                if (isalpha(coordinate[0])) {
+                    x = column_to_index(coordinate[0]);
+                    y = 0;
+                } else {
+                    x = 0;
+                    y = atoi(coordinate) - 1;
+                }
+                TorpedoMove(attacker, defender, x, y);
+                attacker->numOfTorpedo=0;
+                validMove = 1;
+                playerswitch(attacker,defender);
+            } else {
+                printf("Invalid coordinate for Torpedo. Use one column or row.\n");
+            }
+        } else if (is_radar(moveType)){
+            if (attacker->numOfRadars==0){
+                printf("You used up your radar attempts. You've lost your turn!\n");
+                playerswitch(attacker, defender);     
+            }else{
+                if (x < 0 || y < 0 || x + 1 >= GRID_SIZE || y + 1 >= GRID_SIZE) {
+                    printf("Invalid coordinates for radar sweep.\n");
+                    continue;
+                }
+                RadarMove(attacker, defender, x, y);
+                attacker->numOfRadars--;
+                validMove=1;
+                playerswitch(attacker,defender);
+            }
+            
+        } else if (is_smoke(moveType)){
+            if (attacker->numOfShipsSunken-attacker->numOfSmokeScreensPerformed >0){
+                if (x < 0 || y < 0 || x + 1 >= GRID_SIZE || y + 1 >= GRID_SIZE) {
+                    printf("Invalid coordinates for smoke screen.\n");
+                    continue;
+                }
+                SmokeMove(attacker, x, y);
+                attacker->numOfSmokeScreensPerformed++;
+                validMove = 1;
+                playerswitch(attacker, defender); //move successful
+            }else{
+                printf("You exceeded your smoke attempts. You've lost your turn!\n");
+                playerswitch(attacker, defender); 
+            }
+            
+        } else {
+            printf("Invalid move\n");
+        }
+    }
+}
+
+
+void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, char orientation) {
+    markAffectedArea(x, y, movetype, orientation);
+    int HitRegister=0;
+
+    // Iterate over the affected area to check for hits
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            if (affectedArea[i][j] == 'X') {           // Affected
+                char shipID = defender->board[i][j];   // Get the ship identifier
+                if (shipID != '~') {                    // Check if there's a ship
+                    // Check if the cell has already been hit
+                    if (defender->hits[i][j] != '*') { //* means it was hit in a previous turn
+
+                        // Find the ship using its ID directly
+                        for (int k = 0; k < TOTALNUMBEROFSHIPS; k++) {
+                            if (defender->ships[k].id == shipID) {
+                                // update the hit status in occupiedCells
+                                for (int m = 0; m < defender->ships[k].size; m++) {
+                                    if (defender->ships[k].occupiedCells[m][0] == i &&
+                                        defender->ships[k].occupiedCells[m][1] == j) {
+                                        defender->ships[k].occupiedCells[m][2] = 1; // Mark as hit
+                                        break;
+                                    }
+                                }
+                                //update info 
+                                defender->hits[i][j] = '*';
+                                HitRegister++;
+                                break; //Exit
+                            }
+                        }
+                    }
+                } else {
+                    // water, mark as miss
+                    if (defender->hits[i][j] == '~') {
+                        defender->hits[i][j] = 'o'; // Mark as miss
+                    }
+                }
+            }
+        }
+    }
+    display_opponent_grid(defender->hits,game_difficulty);
+    HitOrMissMessageDisplay(HitRegister > 0 ? 1 : 0);
+     if (HitRegister > 0) {
+        for (int k = 0; k < TOTALNUMBEROFSHIPS; k++) {
+            if (isShipSunk(&defender->ships[k]) == 1) {
+                printf("%s has been sunk!\n", defender->ships[k].name);
+                defender->numOfShipsSunken++;
+                attacker->numOfArtillery = 1; // Unlock artillery
+
+                // Unlock torpedo if third ship sunk
+                if (defender->numOfShipsSunken == 3) {
+                    attacker->numOfTorpedo = 1;
+                }
+            }
+        }
+    }
+}
+
+void markAffectedArea(int x, int y, char moveType, char orientation) { //this function is ONLY for HITS so far.
+                                                                     //validation of placement for a move is NOT accounted for as they are checked in each move's respective function.
+    // Reset affected grid for new move incoming                     //radar sweep and smoke screen are NOT accounted for as they do not inflict direct hits.
+    for (int i = 0; i <= GRID_SIZE; i++){                            //direction is only to account for the column/row move.
+        for (int j = 0; j <= GRID_SIZE; j++)
+            affectedArea[i][j] = '~';
+    }
+        
+    // Mark the affected cells based on move type, Note that X is for affected
+    if (moveType == 'F') { //sinle cell
+        affectedArea[x][y]='X'; 
+    }
+    else if (moveType == 'A') { //2x2 area
+        affectedArea[x][y] = 'X';
+        affectedArea[x + 1][y] = 'X';
+        affectedArea[x][y + 1] = 'X';
+        affectedArea[x + 1][y + 1] = 'X';
+    }
+    else if (moveType == 'T') {
+        if (orientation == 'H') { //row move
+            for (int i = 0; i < GRID_SIZE; i++) {
+                affectedArea[x][i] = 'A';
+            }
+        } else if (orientation == 'V') { //column move
+            for (int i = 0; i < GRID_SIZE; i++) {
+                affectedArea[i][y] = 'A';
+            }
+        }
+    }
+}
+
+// Function to check if the ship is sunk. 0 is fail 1 is success
+int isShipSunk(Ship *ship) { 
+    for (int i = 0; i < ship->size ; i++) {
+        if (ship->occupiedCells[i][2] == 0)
+        {
+            return 0;
+        }
+        
+    }
+    return 1; // All parts are hit
+}
+void HitOrMissMessageDisplay(int movesuccess){ //after any move is completed, 
+    if (movesuccess==0) //MISS                 //pass the message success or not to display output 
+    {                                          
+       printf("Miss!\n");
+    }
+    if (movesuccess==1)//HIT
+    {
+        printf("Hit!\n");
+    }
+}
+void stringcopy(char* dest,char* src) {
+    while (*src) {
+        *dest++ = *src++;
+    }
+    *dest = '\0';
+}
+
