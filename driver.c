@@ -291,25 +291,14 @@ int column_to_index(char column) { //for column inputs, convert them to indexes
 }
 
 // Function to validate ship placement on the grid
-int validateShipPlacement(Player *player, Ship *ship, int startRow, int startCol, char orientation) { //tested
+int checkShipOverlap(Player *player, Ship *ship, int startRow, int startCol, char orientation) { //tested
     int row = startRow;
     int col = startCol;
 
-    if (orientation != 'H' && orientation != 'V') {
-        printf("Error: Invalid orientation. Use 'H' for horizontal or 'V' for vertical.Please make sure they are uppercase\n");
-        return 0; // Invalid orientation
-    }
-
     for (int i = 0; i < ship->size; i++) {
-        // Check if the position is within bounds
-        if (row >= GRID_SIZE || col >= GRID_SIZE || row < 0 || col < 0) {
-            printf("Error: Ship placement out of bounds.\n");
-            return 0;
-        }
-
         // Check for overlap with other ships
         if (player->board[row][col] != '~') {
-            printf("Error: Ship placement overlaps with another ship.\n");
+            printf("Ship placement overlaps with another ship.\n");
             return 0;
         }
 
@@ -354,22 +343,41 @@ void placeShips(Player *player) { //tested
         Ship *ship = &player->ships[i];
         int startRow, startCol;
         char colChar, orientation;
+        int valid = 0;
+        while (!valid)
+        {
+            printf("Place your %s (size: %d). Enter starting position (e.g., B3) and orientation (H for horizontal, V for vertical): ", ship->name, ship->size);
+            scanf(" %c%d %c", &colChar, &startRow, &orientation);
+            orientation = toupper(orientation);
 
-        // Prompt for ship placement details
-        printf("Place your %s (size: %d). Enter starting position (e.g., B3) and orientation (H for horizontal, V for vertical): ", ship->name, ship->size);
-        scanf(" %c%d %c", &colChar, &startRow, &orientation);
+            startCol = column_to_index(colChar);
+            startRow--;
 
-        // Convert row and column for board indexing
-        startCol = column_to_index(colChar);
-        startRow--;
+            if (startRow < 0 || startRow >= GRID_SIZE || startCol < 0 || startCol >= GRID_SIZE) {
+                printf("Invalid coordinates. Please stay within the grid (A1 to J10).\n");
+                continue;
+            }
+            if (orientation != 'H' && orientation != 'V') {
+                printf("Invalid orientation. Use 'H' for horizontal or 'V' for vertical.\n");
+                continue;
+            }
 
-        // Validate and place the ship
-        if (validateShipPlacement(player, ship, startRow, startCol, orientation)) {
-            placeShipOnBoard(player, ship, startRow, startCol, orientation);
-            printf("%s placed at %c%d %c.\n", ship->name, colChar, startRow + 1, orientation);
-        } else {
-            printf("Invalid placement. Try again.\n");
-            i--; // Retry the same ship placement
+            if (orientation == 'H' && startCol + ship->size > GRID_SIZE) {
+                printf("Ship would extend beyond the right edge. Try a different position.\n");
+                continue;
+            }
+            if (orientation == 'V' && startRow + ship->size > GRID_SIZE) {
+                printf("Ship would extend beyond the bottom edge. Try a different position.\n");
+                continue;
+            }
+            
+            if (checkShipOverlap(player, ship, startRow, startCol, orientation)) {
+                placeShipOnBoard(player, ship, startRow, startCol, orientation);
+                printf("%s placed successfully.\n", ship->name);
+                valid = 1;
+            } else {
+                printf("Invalid placement. Try again.\n");
+            }
         }
     }
 
@@ -476,7 +484,6 @@ void selectMove(Player *attacker, Player *defender) {
 
     printf("Opponent's Grid:\n");
     display_opponent_grid(defender->hits, game_difficulty);
-    display_opponent_grid(defender->board, game_difficulty);
     printf("%s's turn\n",attacker->name);
     displayAvailableMoves();
 
@@ -522,8 +529,8 @@ void selectMove(Player *attacker, Player *defender) {
 
         
         // Convert coordinate to indices for grid
-        x = column_to_index(coordinate[0]); 
-        y = atoi(&coordinate[1]) - 1; // Convert row to 0-based index
+        y = column_to_index(coordinate[0]); 
+        x = atoi(&coordinate[1]) - 1; // Convert row to 0-based index
         if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) {
             printf("Invalid coordinates.\n");
             continue;
