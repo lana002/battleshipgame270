@@ -119,13 +119,6 @@ void main(){
         placeShips(&player1);
         printf("Placing %s's ships\n", player2.name);
         placeShips(&player2);
-        for (int i = 0; i < TOTALNUMBEROFSHIPS; i++) {
-        printf("Player 2 Ship %s Occupied Cells:\n", player2.ships[i].name);
-        for (int j = 0; j < player2.ships[i].size; j++) {
-        printf("Row: %d, Col: %d\n", player2.ships[i].occupiedCells[j][0], player2.ships[i].occupiedCells[j][1]);
-    }
-}
-    
     
         startGame(&player1,&player2);
 
@@ -249,24 +242,28 @@ void playerswitch(Player *attacker, Player *defender) {
 }
 
 
-void display_opponent_grid(char board[GRID_SIZE][GRID_SIZE], char game_difficulty) { //tested
-    printf("   A B C D E F G H I J\n");
+void display_opponent_grid(char board[GRID_SIZE][GRID_SIZE], char game_difficulty) { 
+    //print column indices
+    printf("   ");
+    for (int j = 0; j < GRID_SIZE; j++) {
+        printf("%c ", 'A' + j);
+    }
+    printf("\n");
+
     for (int i = 0; i < GRID_SIZE; i++) {
-        printf("%2d ", i + 1);
+        // Print row number (1-11)
+        printf("%2d ", i + 1);  // Left-aligned row number with 2 spaces
+
         for (int j = 0; j < GRID_SIZE; j++) {
-            if (game_difficulty == 'E') { // Easy mode
-                if (board[i][j] == '*') {
-                    printf("* "); // Hits marked with '*'
-                } else if (board[i][j] == 'o') {
-                    printf("o "); // Misses marked with 'o'
+            if (game_difficulty == 'E') {
+                // Print the entire board for easy difficulty
+                printf("%c ", board[i][j]);
+            } else {
+                // For hard difficulty, only print * and ~
+                if (board[i][j] == '*' || board[i][j] == '~') {
+                    printf("%c ", board[i][j]);
                 } else {
-                    printf("~ "); // Water remains '~'
-                }
-            } else if (game_difficulty == 'H') { // Hard mode
-                if (board[i][j] == '*') {
-                    printf("* "); // Hits marked with '*'
-                } else {
-                    printf("~ "); // Water for all other cases
+                    printf("  ");  // Print two spaces for other characters
                 }
             }
         }
@@ -593,6 +590,7 @@ void selectMove(Player *attacker, Player *defender) {
 void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, char orientation) {
     markAffectedArea(x, y, movetype, orientation);
     int HitRegister=0;
+    int previouslySunk[TOTALNUMBEROFSHIPS] = {0};
 
     // Iterate over the affected area to check for hits
     for (int i = 0; i < GRID_SIZE; i++) {
@@ -602,7 +600,7 @@ void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, 
                 if (shipID != '~') {                    // Check if there's a ship
                     // Check if the cell has already been hit
                     if (defender->hits[i][j] != '*') { //* means it was hit in a previous turn
-
+                        defender->hits[i][j] = '*';
                         // Find the ship using its ID directly
                         for (int k = 0; k < TOTALNUMBEROFSHIPS; k++) {
                             if (defender->ships[k].id == shipID) {
@@ -614,10 +612,8 @@ void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, 
                                         break;
                                     }
                                 }
-                                //update info 
-                                defender->hits[i][j] = '*';
                                 HitRegister++;
-                                break; //Exit
+                                break; 
                             }
                         }
                     }
@@ -632,17 +628,14 @@ void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, 
     }
     display_opponent_grid(defender->hits,game_difficulty);
     HitOrMissMessageDisplay(HitRegister > 0 ? 1 : 0);
-     if (HitRegister > 0) {
-        for (int k = 0; k < TOTALNUMBEROFSHIPS; k++) {
-            if (isShipSunk(&defender->ships[k]) == 1) {
-                printf("%s has been sunk!\n", defender->ships[k].name);
-                defender->numOfShipsSunken++;
-                attacker->numOfArtillery = 1; // Unlock artillery
+    for (int k = 0; k < TOTALNUMBEROFSHIPS; k++) {
+        if (!previouslySunk[k] && isShipSunk(&defender->ships[k])) {
+            printf("%s has been sunk!\n", defender->ships[k].name);
+            defender->numOfShipsSunken++;
+            attacker->numOfArtillery = 1;
 
-                // Unlock torpedo if third ship sunk
-                if (defender->numOfShipsSunken == 3) {
-                    attacker->numOfTorpedo = 1;
-                }
+            if (defender->numOfShipsSunken == 3) {
+                attacker->numOfTorpedo = 1;
             }
         }
     }
@@ -669,11 +662,11 @@ void markAffectedArea(int x, int y, char moveType, char orientation) { //this fu
     else if (moveType == 'T') {
         if (orientation == 'H') { //row move
             for (int i = 0; i < GRID_SIZE; i++) {
-                affectedArea[x][i] = 'A';
+                affectedArea[x][i] = 'X';
             }
         } else if (orientation == 'V') { //column move
             for (int i = 0; i < GRID_SIZE; i++) {
-                affectedArea[i][y] = 'A';
+                affectedArea[i][y] = 'X';
             }
         }
     }
