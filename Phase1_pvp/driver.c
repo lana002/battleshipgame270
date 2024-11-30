@@ -36,7 +36,6 @@ typedef struct player {
 
 //useful variables                       
 char affectedArea[GRID_SIZE][GRID_SIZE];   // temporary grid for affected cells per each move.clears after every turn.
-char game_difficulty;                      //zero for easy, one for hard
 
 //All function prototypes
 char set_game_difficulty();
@@ -56,17 +55,17 @@ int is_torpedo(char* moveType);
 int is_radar(char* moveType);
 int is_smoke(char* moveType);
 int is_equal(char* str1, char* str2);
-void FireMove(Player* attacker, Player* defender, int x, int y);
-void ArtilleryMove(Player* attacker, Player* defender, int x, int y);
-void TorpedoMove(Player* attacker, Player* defender, int x, int y);
+void FireMove(Player* attacker, Player* defender, int x, int y, char game_difficulty);
+void ArtilleryMove(Player* attacker, Player* defender, int x, int y, char game_difficulty);
+void TorpedoMove(Player* attacker, Player* defender, int x, int y, char game_difficulty);
 void RadarMove(Player *attacker, Player *defender, int x, int y);
 void SmokeMove(Player *attacker, int x, int y);
-void selectMove(Player *attacker, Player *defender);
-void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, char orientation);
+void selectMove(Player *attacker, Player *defender, char game_difficulty);
+void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, char orientation, char game_difficulty);
 void markAffectedArea(int x, int y, char moveType, char orientation);
 int isShipSunk(Ship *ship);
 void HitOrMissMessageDisplay(int movesuccess);
-void startGame(Player *currentPlayer, Player *opponent);
+void startGame(Player *currentPlayer, Player *opponent, char game_difficulty);
 void stringcopy(char* dest,char* src);
 void to_lowercase(char* src, char* dest);
 
@@ -76,15 +75,16 @@ char set_game_difficulty() {
     
     while (1) {
         printf("Enter game difficulty (E for Easy, H for Hard): ");
-        scanf(" %c", &difficulty); 
-        difficulty=toupper(difficulty);
+        scanf(" %c", &difficulty); // Leading space in format string skips whitespace
+        difficulty = toupper(difficulty);
 
         if (difficulty == 'E' || difficulty == 'H') {
             break; // Valid input, exit loop
         } else {
             printf("Invalid input. Please enter 'E' or 'H'.\n");
+            while (getchar() != '\n'); // Clear remaining characters from the input buffer
         }
-    } 
+    }
     return difficulty;
 }
 
@@ -94,7 +94,8 @@ void main(){
     do
     {
         Player player1, player2;
-        game_difficulty=set_game_difficulty();
+        char game_difficulty = set_game_difficulty();
+        printf("game difficulty set to : %c\n",game_difficulty);
 
         printf("Player 1, Enter your name: ");
         scanf("%s", player1.name);
@@ -120,7 +121,7 @@ void main(){
         printf("Placing %s's ships\n", player2.name);
         placeShips(&player2);
     
-        startGame(&player1,&player2);
+        startGame(&player1, &player2, game_difficulty);
 
         //prompt if players would like to play again
         printf("Would you like to play again ? ^-^ (Y/N)");
@@ -129,13 +130,13 @@ void main(){
     } while (EXIT=='Y' || EXIT=='y');
     printf("Thanks for playing ^-^ ");   
 }
-void startGame(Player *player1, Player *player2) {
+void startGame(Player *player1, Player *player2,char game_difficulty ) {
     while (player1->numOfShipsSunken < TOTALNUMBEROFSHIPS && player2->numOfShipsSunken < TOTALNUMBEROFSHIPS) { //win condition
         // Determine current attacker and defender based on the turn parameter in player struct
         Player *attacker = player1->turn == 1 ? player1 : player2;
         Player *defender = player1->turn == 1 ? player2 : player1;
    
-        selectMove(attacker, defender); //this handles switching turns accordingly after a valid move
+        selectMove(attacker, defender, game_difficulty); //this handles switching turns accordingly after a valid move
     }
 
     //display the winner
@@ -243,6 +244,7 @@ void playerswitch(Player *attacker, Player *defender) {
 
 
 void display_opponent_grid(char board[GRID_SIZE][GRID_SIZE], char game_difficulty) { 
+    
     //print column indices
     printf("   ");
     for (int j = 0; j < GRID_SIZE; j++) {
@@ -252,7 +254,7 @@ void display_opponent_grid(char board[GRID_SIZE][GRID_SIZE], char game_difficult
 
     for (int i = 0; i < GRID_SIZE; i++) {
         // Print row number (1-11)
-        printf("%2d ", i + 1);  // Left-aligned row number with 2 spaces
+        printf("%2d ", i + 1);  
 
         for (int j = 0; j < GRID_SIZE; j++) {
             if (game_difficulty == 'E') {
@@ -263,7 +265,7 @@ void display_opponent_grid(char board[GRID_SIZE][GRID_SIZE], char game_difficult
                 if (board[i][j] == '*' || board[i][j] == '~') {
                     printf("%c ", board[i][j]);
                 } else {
-                    printf("  ");  // Print two spaces for other characters
+                    printf("~ ");  // Print two spaces for other characters
                 }
             }
         }
@@ -432,19 +434,19 @@ void to_lowercase(char* src, char* dest) {
     dest[strlen(src)] = '\0';
 }
 
-void FireMove(Player* attacker, Player* defender, int x, int y){ //single cell
-    HitOrMiss(attacker,defender,x, y, 'F', 'H');
+void FireMove(Player* attacker, Player* defender, int x, int y, char game_difficulty){ //single cell
+    HitOrMiss(attacker,defender,x, y, 'F', 'H', game_difficulty);
 }
-void ArtilleryMove(Player* attacker, Player* defender, int x, int y){ //2x2 area
-    HitOrMiss(attacker,defender,x,y,'A','H');
+void ArtilleryMove(Player* attacker, Player* defender, int x, int y, char game_difficulty){ //2x2 area
+    HitOrMiss(attacker,defender,x,y,'A','H', game_difficulty);
 }
-void TorpedoMove(Player* attacker, Player* defender, int x, int y){ //row or column move
+void TorpedoMove(Player* attacker, Player* defender, int x, int y, char game_difficulty){ //row or column move
     if (x==0 && y!=0) //it was a column move
     {
-        HitOrMiss(attacker, defender, y, y,'T','V');
+        HitOrMiss(attacker, defender, y, y,'T','V', game_difficulty);
     }else if (y==0 && x!=0) //it was a row move
     {
-        HitOrMiss(attacker, defender, x, x,'T','H');
+        HitOrMiss(attacker, defender, x, x,'T','H', game_difficulty);
     }
 }
 void RadarMove(Player *attacker, Player *defender, int x, int y){
@@ -477,7 +479,7 @@ void SmokeMove(Player *attacker, int x, int y){
     printf("Obscured successfully!");
 }
 
-void selectMove(Player *attacker, Player *defender) {
+void selectMove(Player *attacker, Player *defender, char game_difficulty) {
      char moveType[20];
     char coordinate[5] = {0}; 
     int x = -1, y = -1;
@@ -547,7 +549,7 @@ void selectMove(Player *attacker, Player *defender) {
             }
 
             // Execute Torpedo move
-            TorpedoMove(attacker, defender, x, y);
+            TorpedoMove(attacker, defender, x, y, game_difficulty);
             attacker->numOfTorpedo = 0;
             playerswitch(attacker, defender);
             validMove=1;
@@ -582,12 +584,12 @@ void selectMove(Player *attacker, Player *defender) {
             }
             // Select move based on input
             if (is_fire(moveType)) {
-                FireMove(attacker, defender, x, y);
+                FireMove(attacker, defender, x, y, game_difficulty);
                 validMove = 1;
             }else if (is_artillery(moveType)) {
                 if (attacker->numOfArtillery ==1)
                 {
-                ArtilleryMove(attacker, defender, x, y);
+                ArtilleryMove(attacker, defender, x, y, game_difficulty);
                 attacker->numOfArtillery=0;
                 validMove = 1;
                 }else{
@@ -628,7 +630,7 @@ void selectMove(Player *attacker, Player *defender) {
 }
 
 
-void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, char orientation) {
+void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, char orientation, char game_difficulty) {
     markAffectedArea(x, y, movetype, orientation);
     int HitRegister=0;
     int previouslySunk[TOTALNUMBEROFSHIPS] = {0};
