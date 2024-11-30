@@ -589,9 +589,21 @@ void selectMove(Player *attacker, Player *defender, char game_difficulty) {
             }else if (is_artillery(moveType)) {
                 if (attacker->numOfArtillery ==1)
                 {
-                ArtilleryMove(attacker, defender, x, y, game_difficulty);
-                attacker->numOfArtillery=0;
-                validMove = 1;
+                    int shipsSunkenBefore = defender->numOfShipsSunken;
+
+                    // Perform Artillery Move
+                    ArtilleryMove(attacker, defender, x, y, game_difficulty);
+        
+                    // Check if a ship was sunk during this move
+                    if (defender->numOfShipsSunken > shipsSunkenBefore) {
+                        // Ship sunk, keep Artillery available for next turn
+                        attacker->numOfArtillery = 1;
+                    } else {
+                        // No ship sunk, disable Artillery
+                        attacker->numOfArtillery = 0;
+                    }
+                    validMove=1;
+                
                 }else{
                     printf("You cannot use Artillery!\n");
                 }          
@@ -633,7 +645,11 @@ void selectMove(Player *attacker, Player *defender, char game_difficulty) {
 void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, char orientation, char game_difficulty) {
     markAffectedArea(x, y, movetype, orientation);
     int HitRegister=0;
+    
     int previouslySunk[TOTALNUMBEROFSHIPS] = {0};
+    for (int k = 0; k < TOTALNUMBEROFSHIPS; k++) {
+        previouslySunk[k] = isShipSunk(&defender->ships[k]);
+    }
 
     // Iterate over the affected area to check for hits
     for (int i = 0; i < GRID_SIZE; i++) {
