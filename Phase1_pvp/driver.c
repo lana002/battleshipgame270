@@ -283,8 +283,12 @@ void displayBoard(Player *player) {
     }
 }
 
-int column_to_index(char column) { //for column inputs, convert them to indexes
-    return toupper(column) - 'A';
+int column_to_index(char column) {
+    column = toupper(column);
+    if (column < 'A' || column > 'J') {
+        return -1; // Signal invalid column
+    }
+    return column - 'A';
 }
 
 // Function to validate ship placement on the grid
@@ -474,95 +478,132 @@ void SmokeMove(Player *attacker, int x, int y){
 }
 
 void selectMove(Player *attacker, Player *defender) {
-    char moveType[20];
-    char coordinate[5]; 
-    int x, y, temp1,temp2;
-    int validMove = 0;
+     char moveType[20];
+    char coordinate[5] = {0}; 
+    int x = -1, y = -1;
+    int validMove=0;
 
     printf("Opponent's Grid:\n");
     display_opponent_grid(defender->hits, game_difficulty);
-    printf("%s's turn\n",attacker->name);
+    printf("%s's turn\n", attacker->name);
     displayAvailableMoves();
 
     while (!validMove) {
-        
+        // Reset input
+        moveType[0] = '\0';
+        coordinate[0] = '\0';
+
         printf("\nEnter your move: ");
-        scanf("%10s %2s", moveType, coordinate);
-
-        if (is_torpedo(moveType)) {
-            if (attacker->numOfTorpedo==1)
-            {
-                if (coordinate[1] == '\0') { // Single character input
-                    if (isalpha(coordinate[0])) {
-                        temp1 = column_to_index(coordinate[0]); 
-                        if (temp1 < 0 || temp1 >= GRID_SIZE) {
-                            printf("Invalid column for Torpedo. Use a valid column (e.g., A-J).\n");
-                            continue;
-                        }
-                        x = 0; y = temp1; 
-                    } else if (isdigit(coordinate[0])) {
-                        temp2 = atoi(coordinate) - 1;
-                        if (temp2 < 0 || temp2 >= GRID_SIZE) {
-                            printf("Invalid row for Torpedo. Use a valid row (e.g., 1-10).\n");
-                            continue;
-                        }
-                        x=temp2 ; y=0;
-                    }else {
-                    printf("Invalid coordinate for Torpedo. Use one column or row.\n");
-                    continue;
-                    }
-                    TorpedoMove(attacker, defender, x, y);
-                    attacker->numOfTorpedo = 0; // Consume Torpedo
-                    validMove = 1;
-                    playerswitch(attacker,defender);
-                    continue;
-                } else {
-                    printf("Invalid coordinate for Torpedo. Use one column or row.\n");
-                    continue;
-                }
-            }else{printf("You are not allowed to use Torpedo!");continue;}
-
-        }
-
         
-        // Convert coordinate to indices for grid
-        y = column_to_index(coordinate[0]); 
-        x = atoi(&coordinate[1]) - 1; // Convert row to 0-based index
-        if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) {
-            printf("Invalid coordinates.\n");
+        // Read the entire line, trimming newline
+        char input[30];
+        if (fgets(input, sizeof(input), stdin) == NULL) {
+            printf("Input error. Try again.\n");
+            continue;
+        }
+        input[strcspn(input, "\n")] = '\0';
+
+        // Validate total input length
+        if (strlen(input) > 15) {
+            printf("Input too long. Use format 'MoveType Coordinate' (e.g., Fire A1).\n");
             continue;
         }
 
-        // Select move based on input
-        if (is_fire(moveType)) {
-            FireMove(attacker, defender, x, y);
-            validMove = 1;
-        }else if (is_artillery(moveType)) {
-            if (attacker->numOfArtillery ==1)
-            {
+        // Parse input
+        if (sscanf(input, "%19s %4s", moveType, coordinate) != 2) {
+            printf("Invalid input. Use format 'MoveType Coordinate' (e.g., Fire A1).\n");
+            continue;
+        }
+
+        // Special handling for Torpedo move
+        if (is_torpedo(moveType)) {
+            // Check Torpedo availability
+            if (attacker->numOfTorpedo != 1) {
+                printf("You are not allowed to use Torpedo!\n");
+                continue;
+            }
+
+            // Validate Torpedo coordinate
+            int coordLen = strlen(coordinate);
+            if (coordLen != 1 || 
+                (!isalpha(coordinate[0]) && !isdigit(coordinate[0]))) {
+                printf("Torpedo move must be a single column letter (A-J) or row number (1-10).\n");
+                continue;
+            }
+
+            // Convert Torpedo coordinate
+            if (isalpha(coordinate[0])) {
+                y = column_to_index(coordinate[0]); 
+                x = 0; // Entire row
+            } else {
+                x = atoi(coordinate) - 1; // Entire column
+                y = 0;
+            }
+
+            // Validate grid boundaries for Torpedo
+            if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) {
+                printf("Torpedo coordinates out of bounds.\n");
+                continue;
+            }
+
+            // Execute Torpedo move
+            TorpedoMove(attacker, defender, x, y);
+            attacker->numOfTorpedo = 0;
+            playerswitch(attacker, defender);
+            validMove=1;
+        } 
+        // Other move types
+        else {
+            // Validate coordinate format for non-Torpedo moves
+            int coordLen = strlen(coordinate);
+            if (coordLen < 2 || coordLen > 3 || 
+                !isalpha(coordinate[0]) || 
+                (coordLen == 3 && (!isdigit(coordinate[1]) || !isdigit(coordinate[2]))) ||
+                (coordLen == 2 && !isdigit(coordinate[1]))) {
+                printf("Invalid coordinate. Use format like A1 or A10.\n");
+                continue;
+            }
+
+            // Convert coordinate
+            char colChar = coordinate[0];
+            y = column_to_index(colChar);
+            
+            // Handle coordinate conversion based on length
+            if (coordLen == 2) {
+                x = atoi(&coordinate[1]) - 1;  // Use atoi for proper conversion
+            } else if (coordLen == 3) {
+                x = atoi(&coordinate[1]) - 1;  // Handles both single and double-digit rows
+            } 
+
+            // Validate grid boundaries
+            if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) {
+                printf("Coordinates out of bounds.\n");
+                continue;
+            }
+            // Select move based on input
+            if (is_fire(moveType)) {
+                FireMove(attacker, defender, x, y);
+                validMove = 1;
+            }else if (is_artillery(moveType)) {
+                if (attacker->numOfArtillery ==1)
+                {
                 ArtilleryMove(attacker, defender, x, y);
                 attacker->numOfArtillery=0;
                 validMove = 1;
-            }else
-            {
-                printf("You cannot use Artillery");
-            }          
-        } else if (is_radar(moveType)){
-            if (attacker->numOfRadars==0){
-                printf("You used up your radar attempts. You've lost your turn!\n");
-                validMove=1;
-            }else{
-                if (x < 0 || y < 0 || x + 1 >= GRID_SIZE || y + 1 >= GRID_SIZE) {
-                    printf("Invalid coordinates for radar sweep.\n");
-                    continue;
+                }else{
+                    printf("You cannot use Artillery!\n");
+                }          
+            } else if (is_radar(moveType)){
+                if (attacker->numOfRadars > 0) {
+                    RadarMove(attacker, defender, x, y);
+                    attacker->numOfRadars--;
+                    validMove = 1;
+                } else {
+                    printf("You used up your radar attempts.You lost your turn\n");
+                    validMove=1;
                 }
-                RadarMove(attacker, defender, x, y);
-                attacker->numOfRadars--;
-                validMove=1;
-            }
-            
-        } else if (is_smoke(moveType)){
-            if (attacker->numOfShipsSunken-attacker->numOfSmokeScreensPerformed >0){
+            } else if (is_smoke(moveType)){
+                if (attacker->numOfShipsSunken-attacker->numOfSmokeScreensPerformed >0){
                 if (x < 0 || y < 0 || x + 1 >= GRID_SIZE || y + 1 >= GRID_SIZE) {
                     printf("Invalid coordinates for smoke screen.\n");
                     continue;
@@ -570,13 +611,13 @@ void selectMove(Player *attacker, Player *defender) {
                 SmokeMove(attacker, x, y);
                 attacker->numOfSmokeScreensPerformed++;
                 validMove = 1;
-            }else{
-                printf("You exceeded your smoke attempts. You've lost your turn!\n");
-                validMove=1;
+                }else{
+                    printf("You exceeded your smoke attempts. You've lost your turn!\n");
+                    validMove=1;
+                }   
+            } else {
+                printf("Invalid move\n");
             }
-            
-        } else {
-            printf("Invalid move\n");
         }
         if (validMove)
         {
