@@ -47,7 +47,7 @@ void playerswitch(Player *attacker, Player *defender);
 void display_opponent_grid(char board[GRID_SIZE][GRID_SIZE], char game_difficulty);
 void displayBoard(Player *player);
 int column_to_index(char column);
-int validateShipPlacement(Player *player, Ship *ship, int startRow, int startCol, char orientation);
+int checkShipOverlap(Player *player, Ship *ship, int startRow, int startCol, char orientation);
 void placeShipOnBoard(Player *player, Ship *ship, int startRow, int startCol, char orientation);
 void placeShips(Player *player);
 int is_fire(char* moveType);
