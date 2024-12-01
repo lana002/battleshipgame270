@@ -22,7 +22,7 @@ typedef struct {
 typedef struct player {
     char name[MAX_NAME_LENGTH];
     int turn;                               //1 its their turn, 0 its not their turn.
-    char board[GRID_SIZE][GRID_SIZE];       //contains placement of ships across the 10x10 board //tentative could be removed.
+    char board[GRID_SIZE][GRID_SIZE];       //contains placement of ships across the 10x10 board 
     char hits[GRID_SIZE][GRID_SIZE];        // grid with ~ for water, o for miss, * for hit.This is for hits and misses done by the opponent on this player's board
     int numOfShipsSunken;                   //when initializing players, set to zero. Useful for victory checking.Ships sunken by the opponent of this player's ships.
     Ship ships[TOTALNUMBEROFSHIPS];         //array of their ships. to be initialized.
@@ -73,18 +73,28 @@ void clear_screen();
 
 char set_game_difficulty() {
     char difficulty;
-    
+    char input[10]; // Buffer to hold input
+
     while (1) {
         printf("Enter game difficulty (E for Easy, H for Hard): ");
-        scanf(" %c", &difficulty); // Leading space in format string skips whitespace
-        difficulty = toupper(difficulty);
-
-        if (difficulty == 'E' || difficulty == 'H') {
-            break; // Valid input, exit loop
-        } else {
-            printf("Invalid input. Please enter 'E' or 'H'.\n");
-            while (getchar() != '\n'); // Clear remaining characters from the input buffer
+        
+        // Read the entire line of input
+        if (fgets(input, sizeof(input), stdin) == NULL) {
+            printf("Input error. Please try again.\n");
+            continue;
         }
+
+        input[strcspn(input, "\n")] = '\0';
+
+        // Check if input is a single character
+        if (strlen(input) == 1) {
+            difficulty = toupper(input[0]);
+            if (difficulty == 'E' || difficulty == 'H') {
+                break; // Valid input
+            }
+        }
+
+        printf("Invalid input. Please enter 'E' or 'H'.\n");
     }
     return difficulty;
 }
@@ -119,17 +129,21 @@ void main(){
         }
         printf("Placing %s's ships\n", player1.name);
         placeShips(&player1);
+        clear_screen();
+        printf("All ships placed for %s.\n", player1.name);
         printf("Placing %s's ships\n", player2.name);
         placeShips(&player2);
+        clear_screen();
+        printf("All ships placed for %s.\n", player2.name);
     
         startGame(&player1, &player2, game_difficulty);
 
         //prompt if players would like to play again
-        printf("Would you like to play again ? ^-^ (Y/N)");
+        printf("\nWould you like to play again ? ^-^ (Y/N)");
         scanf("%c", &EXIT);
 
     } while (EXIT=='Y' || EXIT=='y');
-    printf("Thanks for playing ^-^ ");   
+    printf("\nThanks for playing ^-^ ");   
 }
 void startGame(Player *player1, Player *player2,char game_difficulty ) {
     while (player1->numOfShipsSunken < TOTALNUMBEROFSHIPS && player2->numOfShipsSunken < TOTALNUMBEROFSHIPS) { //win condition
@@ -147,6 +161,7 @@ void startGame(Player *player1, Player *player2,char game_difficulty ) {
         printf("%s wins!\n", player1->name);
     }
     //to find out where each player hid their ships in the end
+    printf("\nBoards of each player\n");
     displayBoard(player1); 
     displayBoard(player2);
 }
@@ -385,34 +400,26 @@ void placeShips(Player *player) { //tested
         }
     }
 
-    // Clear console and display confirmation
-    void clear_screen();
-    printf("All ships placed for %s.\n", player->name);
 }
 
 
-
-// Function to check if the move is "Fire"
+//functions to check if moves are correctly inputted
 int is_fire(char* moveType) {
     return is_equal(moveType, "fire");
 }
 
-// Function to check if the move is "Artillery"
 int is_artillery(char* moveType) {
     return is_equal(moveType, "artillery");
 }
 
-// Function to check if the move is "Torpedo"
 int is_torpedo(char* moveType) {
     return is_equal(moveType, "torpedo");
 }
 
-// Function to check if the move is "Radar"
 int is_radar(char* moveType) {
     return is_equal(moveType, "radar");
 }
 
-// Function to check if the move is "Smoke"
 int is_smoke(char* moveType) {
     return is_equal(moveType, "smoke");
 }
@@ -427,7 +434,6 @@ int is_equal(char* str1, char* str2) {
     return (strcmp(lowerStr1, lowerStr2) == 0); // Compare the lowercase strings
 }
 
-// Converts a string to lowercase and stores it in the destination
 void to_lowercase(char* src, char* dest) {
     for (int i = 0; src[i] != '\0'; i++) {
         dest[i] = tolower((unsigned char)src[i]);
@@ -476,12 +482,12 @@ void SmokeMove(Player *attacker, int x, int y){
             attacker->obscuredArea[x + i][y + j] = 'S'; // Marking as obscured
         }
     }
-    void clear_screen();
+    clear_screen();
     printf("Obscured successfully!");
 }
 
 void selectMove(Player *attacker, Player *defender, char game_difficulty) {
-     char moveType[20];
+    char moveType[20];
     char coordinate[5] = {0}; 
     int x = -1, y = -1;
     int validMove=0;
@@ -508,13 +514,13 @@ void selectMove(Player *attacker, Player *defender, char game_difficulty) {
 
         // Validate total input length
         if (strlen(input) > 15) {
-            printf("Input too long. Use format 'MoveType Coordinate' (e.g., Fire A1).\n");
+            printf("Input too long. Use format 'MoveType Coordinate'\n");
             continue;
         }
 
         // Parse input
         if (sscanf(input, "%19s %4s", moveType, coordinate) != 2) {
-            printf("Invalid input. Use format 'MoveType Coordinate' (e.g., Fire A1).\n");
+            printf("Use format 'MoveType Coordinate'\n");
             continue;
         }
 
@@ -606,7 +612,7 @@ void selectMove(Player *attacker, Player *defender, char game_difficulty) {
                     validMove=1;
                 
                 }else{
-                    printf("You cannot use Artillery!\n");
+                    printf("You are not allowed to use Artillery!\n");
                 }          
             } else if (is_radar(moveType)){
                 if (attacker->numOfRadars > 0) {
@@ -614,7 +620,7 @@ void selectMove(Player *attacker, Player *defender, char game_difficulty) {
                     attacker->numOfRadars--;
                     validMove = 1;
                 } else {
-                    printf("You used up your radar attempts.You lost your turn\n");
+                    printf("Uh Oh! You used up your radar attempts.You've lost your turn!\n");
                     validMove=1;
                 }
             } else if (is_smoke(moveType)){
@@ -627,7 +633,7 @@ void selectMove(Player *attacker, Player *defender, char game_difficulty) {
                 attacker->numOfSmokeScreensPerformed++;
                 validMove = 1;
                 }else{
-                    printf("You exceeded your smoke attempts. You've lost your turn!\n");
+                    printf("Uh Oh! You exceeded your smoke attempts. You've lost your turn!\n");
                     validMove=1;
                 }   
             } else {

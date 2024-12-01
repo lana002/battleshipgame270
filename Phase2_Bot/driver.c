@@ -31,7 +31,7 @@ typedef struct {
 typedef struct player {
     char name[MAX_NAME_LENGTH];
     int turn;                               //1 its their turn, 0 its not their turn.
-    char board[GRID_SIZE][GRID_SIZE];       //contains placement of ships across the 10x10 board //tentative could be removed.
+    char board[GRID_SIZE][GRID_SIZE];       //contains placement of ships across the 10x10 board
     char hits[GRID_SIZE][GRID_SIZE];        // grid with ~ for water, o for miss, * for hit.This is for hits and misses done by the opponent on this player's board
     int numOfShipsSunken;                   //when initializing players, set to zero. Useful for victory checking.Ships sunken by the opponent of this player's ships.
     Ship ships[TOTALNUMBEROFSHIPS];         //array of their ships. to be initialized.
@@ -224,6 +224,9 @@ void main(){
 
         printf("Placing your ships\n");
         placeShips(&human);
+        clear_screen();
+        printf("All ships placed for %s.\n", human.name);
+        printf("\nBOT is placing their ships. Hang tight...^-^\n");
 
         for (int i = 0; i < TOTALNUMBEROFSHIPS; i++) {
             Ship *ship = &bot.ships[i];
@@ -245,15 +248,16 @@ void main(){
                 }
             }
         }
+        printf("\nAll ships placed for BOT.\n");
     
         startGame(&human,&bot,game_difficulty);
  
         //prompt if players would like to play again
-        printf("Would you like to play again ? ^-^ (Y/N)");
+        printf("\nWould you like to play again ? ^-^ (Y/N)");
         scanf("%c", &EXIT);
 
     } while (EXIT=='Y' || EXIT=='y');
-    printf("Thanks for playing ^-^ \n");   
+    printf("\nThanks for playing ^-^ \n");   
 }
 void startGame(Player *human, Player *bot, char game_difficulty ) {
     while (human->numOfShipsSunken < TOTALNUMBEROFSHIPS && bot->numOfShipsSunken < TOTALNUMBEROFSHIPS) { //win condition
@@ -271,7 +275,7 @@ void startGame(Player *human, Player *bot, char game_difficulty ) {
         printf("%s wins!\n", human->name);
     }
     //to find out where each player hid their ships in the end
-    printf("Boards of each player");
+    printf("\nBoards of each player\n");
     displayBoard(human); 
     displayBoard(bot);
 }
@@ -467,6 +471,10 @@ void placeShipOnBoard(Player *player, Ship *ship, int startRow, int startCol, ch
             row++;
         }
     }
+    if (isBot(player))
+    {
+        return;
+    }
     
     displayBoard(player); 
 }
@@ -515,38 +523,31 @@ void placeShips(Player *player) { //tested
             }
         }
     }
-
-    // Clear console and display confirmation
-    void clear_screen();
-    printf("All ships placed for %s.\n", player->name);
 }
 
 
 
-// Function to check if the move is "Fire"
+//functions to check the move was typed correctly
 int is_fire(char* moveType) {
     return is_equal(moveType, "fire");
 }
 
-// Function to check if the move is "Artillery"
 int is_artillery(char* moveType) {
     return is_equal(moveType, "artillery");
 }
 
-// Function to check if the move is "Torpedo"
 int is_torpedo(char* moveType) {
     return is_equal(moveType, "torpedo");
 }
 
-// Function to check if the move is "Radar"
 int is_radar(char* moveType) {
     return is_equal(moveType, "radar");
 }
 
-// Function to check if the move is "Smoke"
 int is_smoke(char* moveType) {
     return is_equal(moveType, "smoke");
 }
+
 //checking if move inputs are okay
 int is_equal(char* str1, char* str2) {
     char lowerStr1[20], lowerStr2[20];
@@ -558,7 +559,7 @@ int is_equal(char* str1, char* str2) {
     return (strcmp(lowerStr1, lowerStr2) == 0); // Compare the lowercase strings
 }
 
-// Converts a string to lowercase and stores it in the destination
+
 void to_lowercase(char* src, char* dest) {
     for (int i = 0; src[i] != '\0'; i++) {
         dest[i] = tolower((unsigned char)src[i]);
@@ -607,7 +608,7 @@ void SmokeMove(Player *attacker, int x, int y){
             attacker->obscuredArea[x + i][y + j] = 'S'; // Marking as obscured
         }
     }
-    void clear_screen();
+    clear_screen();
     printf("Obscured successfully!");
 }
 
@@ -650,6 +651,8 @@ void botSelectMove(Player *bot, Player *human, char game_difficulty) {
 
 void selectMove(Player *attacker, Player *defender,char game_difficulty) {
     if (isBot(attacker)) {
+        printf("\nBOT's turn!\n");
+        printf("\nBOT is making a move...\n");
         botSelectMove(attacker, defender, game_difficulty);
         playerswitch(attacker, defender);
         return;
@@ -780,7 +783,7 @@ void selectMove(Player *attacker, Player *defender,char game_difficulty) {
                     validMove=1;
                 
                 }else{
-                    printf("You cannot use Artillery!\n");
+                    printf("You are not allowed to use Artillery!\n");
                 }          
             } else if (is_radar(moveType)){
                 if (attacker->numOfRadars > 0) {
@@ -788,7 +791,7 @@ void selectMove(Player *attacker, Player *defender,char game_difficulty) {
                     attacker->numOfRadars--;
                     validMove = 1;
                 } else {
-                    printf("You used up your radar attempts.You lost your turn\n");
+                    printf("Uh Oh! You used up your radar attempts.You've lost your turn!\n");
                     validMove=1;
                 }
             } else if (is_smoke(moveType)){
@@ -801,7 +804,7 @@ void selectMove(Player *attacker, Player *defender,char game_difficulty) {
                 attacker->numOfSmokeScreensPerformed++;
                 validMove = 1;
                 }else{
-                    printf("You exceeded your smoke attempts. You've lost your turn!\n");
+                    printf("Uh Oh! You exceeded your smoke attempts. You've lost your turn!\n");
                     validMove=1;
                 }   
             } else {
@@ -947,12 +950,12 @@ char selectBotMoveType(Player *bot) {
     static int lastMoveWasRadar = 0; // this is  2 avoid consecutive radar usage
 
     if (bot->numOfTorpedo){
-        printf("BOT: Torpedo unlocked! Preparing torpedo attack.\n");
+        printf("BOT: Torpedo unlocked! Preparing torpedo attack...\n");
         lastMoveWasRadar = 0;
         return 'T';
     }
     if (bot->numOfArtillery) {
-        printf("BOT: Artillery unlocked! Preparing artillery strike.\n");
+        printf("BOT: Artillery unlocked! Preparing artillery strike...\n");
         lastMoveWasRadar = 0;
         return 'A';
     }
@@ -965,7 +968,7 @@ char selectBotMoveType(Player *bot) {
         float randomFactor = (bot->numOfRadars == 1) ? ((float)rand() / RAND_MAX) : 0;
 
         if (unexploredPercentage > radarThreshold || randomFactor < 0.3) {
-            printf("BOT: Radar available. Scanning strategically.\n");
+            printf("BOT: Radar available. Scanning...\n");
             lastMoveWasRadar = 1;
             return 'R';
         }
@@ -973,13 +976,13 @@ char selectBotMoveType(Player *bot) {
 
     if (bot->numOfShipsSunken > bot->numOfSmokeScreensPerformed) {
         int vulnerabilityScore = calculateVulnerabilityScore(bot);
-        if (vulnerabilityScore > 5){//5 is the vulnerability threshold,the lower it is the more dfensive the bot would be
-            printf("BOT: Smoke screen ready. Preparing to obscure vulnerable areas.\n");
+        if (vulnerabilityScore > 5){//5 is the vulnerability threshold,the lower it is the more defensive the bot would be
+            printf("BOT: Let me obscure a vulnerable area...\n");
             lastMoveWasRadar = 0;
             return 'S';
         } 
     }
-    printf("BOT: No special moves available. Performing standard fire attack.\n");
+    printf("BOT: Performing a standard fire attack...\n");
     lastMoveWasRadar = 0;
     return 'F';  // Default to fire
 }
@@ -1026,7 +1029,7 @@ void selectBotCoordinate(Player *bot, Player *opponent, int *x, int *y, char mov
                 dequeueHunt(&bot->huntQueue, x, y);
                 if (rand() % 2) {//row move
                     *y = 0;
-                } else { //column
+                } else {         //column
                     *x = 0;
                 }
                 break;
@@ -1059,7 +1062,6 @@ void selectBotCoordinate(Player *bot, Player *opponent, int *x, int *y, char mov
                         }
                     }
 
-                    // Select the first unexplored cell in the chosen row
                     *x = maxRowIndex;
                     *y = 0;
                 } else { // Target a column
@@ -1073,7 +1075,6 @@ void selectBotCoordinate(Player *bot, Player *opponent, int *x, int *y, char mov
                         }
                     }
 
-                    // Select the first unexplored cell in the chosen column
                     *y = maxColIndex;
                     *x = 0;
                 }
@@ -1082,9 +1083,9 @@ void selectBotCoordinate(Player *bot, Player *opponent, int *x, int *y, char mov
         }
 
         
-        case 'A': {  // Artillery targets potential ship clusters
+        case 'A': {  // Artillery
             if (!isHuntQueueEmpty(&bot->huntQueue)) {
-                dequeueHunt(&bot->huntQueue, x, y); // Dequeue the top-left cell of a 2x2 area
+                dequeueHunt(&bot->huntQueue, x, y); 
                 break;
             } else {
                 int maxUnexploredDensity = 0;
@@ -1122,7 +1123,7 @@ void selectBotCoordinate(Player *bot, Player *opponent, int *x, int *y, char mov
             break;
         }
         
-        case 'R': {  // Radar sweeps unexplored dense areas
+        case 'R': {  // Radar 
             int maxUnexploredDensity = 0;
             for (int i = 0; i < GRID_SIZE - 1; i++) {
                 for (int j = 0; j < GRID_SIZE - 1; j++) {
@@ -1154,7 +1155,7 @@ void selectBotCoordinate(Player *bot, Player *opponent, int *x, int *y, char mov
             break; 
         }
 
-        default: {  // Fire move with intelligent targeting
+        default: {  // Fire 
             if (!isHuntQueueEmpty(&bot->huntQueue)) {
                 dequeueHunt(&bot->huntQueue, x, y);
                 break;
@@ -1179,7 +1180,7 @@ void addAdjacentUnexploredCells(Player *bot,Player *opponent, int x, int y) {
 
         // Check if new cell is within grid bounds
         if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
-            // Ensure the cell is unexplored
+            // cell is unexplored
             if (opponent->hits[newX][newY] == '~') {
                 // Check if the cell is already in the queue
                 int isAlreadyQueued = 0;
