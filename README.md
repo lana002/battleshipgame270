@@ -6,7 +6,7 @@
 
 ## Introduction
 This is a console-based implementation of the classic game Battleship 
-with improved strategies using using the C programming
+with improved strategies using the C programming
 language.This project is for the course CMPS270 - Software Construction.
 
 There are two different versions of the program: PVP and PVB.
