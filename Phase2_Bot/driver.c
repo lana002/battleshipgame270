@@ -127,7 +127,7 @@ void startGame(Player *currentPlayer, Player *opponent, char game_difficulty);
 void stringcopy(char* dest,char* src);
 void to_lowercase(char* src, char* dest);
 void selectBotCoordinate(Player *bot, Player *opponent, int *x, int *y, char moveType);
-char selectBotMoveType(Player *bot);
+char selectBotMoveType(Player *bot,Player *opponent);
 void botSelectMove(Player *bot, Player *human, char game_difficulty);
 void initializeBotPlayer(Player *bot);
 void addAdjacentUnexploredCells(Player *bot,Player *opponent, int x, int y);
@@ -140,11 +140,10 @@ int isBot(Player *player);
 void findVulnerableRegions(Player *bot, int *bestX, int *bestY);
 int calculateProtectionScore(Player *bot, int x, int y);
 void findDenseClusterOrRandom(Player *bot, int *bestX, int *bestY);
-int calculateUnexploredDensity(char hits[GRID_SIZE][GRID_SIZE], int x, int y);
-float calculateUnexploredPercentage(Player *bot);
+float calculateUnexploredPercentage(Player *bot,Player *opponent);
 int calculateVulnerabilityScore(Player *bot);
 void clear_screen(); 
-float calculateRadarThreshold(Player *bot);
+float calculateRadarThreshold(Player *bot,Player *opponent);
 
 
 
@@ -613,7 +612,7 @@ void SmokeMove(Player *attacker, int x, int y){
 }
 
 void botSelectMove(Player *bot, Player *human, char game_difficulty) {
-    char moveType = selectBotMoveType(bot);
+    char moveType = selectBotMoveType(bot,human);
     int x, y;
     
     selectBotCoordinate(bot, human, &x, &y, moveType);
@@ -945,7 +944,7 @@ void stringcopy(char* dest,char* src) {
 
 //bot logic and functions
 
-char selectBotMoveType(Player *bot) {
+char selectBotMoveType(Player *bot,Player *opponent) {
     
     static int lastMoveWasRadar = 0; // this is  2 avoid consecutive radar usage
 
@@ -961,8 +960,8 @@ char selectBotMoveType(Player *bot) {
     }
 
     if (bot->numOfRadars > 0 && !lastMoveWasRadar) {
-        float unexploredPercentage = calculateUnexploredPercentage(bot);
-        float radarThreshold = calculateRadarThreshold(bot);
+        float unexploredPercentage = calculateUnexploredPercentage(bot,opponent);
+        float radarThreshold = calculateRadarThreshold(bot,opponent);
 
         // Add randomness only when 1 radar is left
         float randomFactor = (bot->numOfRadars == 1) ? ((float)rand() / RAND_MAX) : 0;
@@ -987,7 +986,7 @@ char selectBotMoveType(Player *bot) {
     return 'F';  // Default to fire
 }
 
-float calculateRadarThreshold(Player *bot) {
+float calculateRadarThreshold(Player *bot,Player *opponent) {
     float baseThreshold = 0.5; // Base percentage of unexplored cells
     int remainingShips = TOTALNUMBEROFSHIPS - bot->numOfShipsSunken;
     if (remainingShips <= 2) baseThreshold += 0.1; // Increase threshold if few ships remain
@@ -995,11 +994,11 @@ float calculateRadarThreshold(Player *bot) {
 }
 
 
-float calculateUnexploredPercentage(Player *bot) {
+float calculateUnexploredPercentage(Player *bot,Player *opponent) {
     int unexploredCells = 0;
     for (int i = 0; i < GRID_SIZE; i++) {
         for (int j = 0; j < GRID_SIZE; j++) {
-            if (bot->hits[i][j] == '~') unexploredCells++;
+            if (opponent->hits[i][j] == '~') unexploredCells++;
         }
     }
     return (float)unexploredCells / (GRID_SIZE * GRID_SIZE);
