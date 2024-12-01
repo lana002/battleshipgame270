@@ -988,7 +988,7 @@ char selectBotMoveType(Player *bot,Player *opponent) {
 
 float calculateRadarThreshold(Player *bot,Player *opponent) {
     float baseThreshold = 0.5; // Base percentage of unexplored cells
-    int remainingShips = TOTALNUMBEROFSHIPS - bot->numOfShipsSunken;
+    int remainingShips = TOTALNUMBEROFSHIPS - opponent->numOfShipsSunken;
     if (remainingShips <= 2) baseThreshold += 0.1; // Increase threshold if few ships remain
     return baseThreshold;
 }
