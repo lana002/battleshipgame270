@@ -68,6 +68,7 @@ void HitOrMissMessageDisplay(int movesuccess);
 void startGame(Player *currentPlayer, Player *opponent, char game_difficulty);
 void stringcopy(char* dest,char* src);
 void to_lowercase(char* src, char* dest);
+void clear_screen(); 
 
 
 char set_game_difficulty() {

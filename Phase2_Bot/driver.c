@@ -130,7 +130,7 @@ void selectBotCoordinate(Player *bot, Player *opponent, int *x, int *y, char mov
 char selectBotMoveType(Player *bot);
 void botSelectMove(Player *bot, Player *human, char game_difficulty);
 void initializeBotPlayer(Player *bot);
-void addAdjacentUnexploredCells(Player *bot, int x, int y);
+void addAdjacentUnexploredCells(Player *bot,Player *opponent, int x, int y);
 void initHuntQueue(HuntQueue *queue);
 int isHuntQueueEmpty(HuntQueue *queue);
 int isHuntQueueFull(HuntQueue *queue);
@@ -143,27 +143,41 @@ void findDenseClusterOrRandom(Player *bot, int *bestX, int *bestY);
 int calculateUnexploredDensity(char hits[GRID_SIZE][GRID_SIZE], int x, int y);
 float calculateUnexploredPercentage(Player *bot);
 int calculateVulnerabilityScore(Player *bot);
+void clear_screen(); 
+float calculateRadarThreshold(Player *bot);
 
 
 
 
 char set_game_difficulty() {
     char difficulty;
-    
+    char input[10]; // Buffer to hold input
+
     while (1) {
         printf("Enter game difficulty (E for Easy, H for Hard): ");
-        scanf(" %c", &difficulty); // Leading space in format string skips whitespace
-        difficulty = toupper(difficulty);
-
-        if (difficulty == 'E' || difficulty == 'H') {
-            break; // Valid input, exit loop
-        } else {
-            printf("Invalid input. Please enter 'E' or 'H'.\n");
-            while (getchar() != '\n'); // Clear remaining characters from the input buffer
+        
+        // Read the entire line of input
+        if (fgets(input, sizeof(input), stdin) == NULL) {
+            printf("Input error. Please try again.\n");
+            continue;
         }
+
+        // Trim the newline character if present
+        input[strcspn(input, "\n")] = '\0';
+
+        // Check if input is a single character
+        if (strlen(input) == 1) {
+            difficulty = toupper(input[0]);
+            if (difficulty == 'E' || difficulty == 'H') {
+                break; // Valid input
+            }
+        }
+
+        printf("Invalid input. Please enter 'E' or 'H'.\n");
     }
     return difficulty;
 }
+
 
 void main(){
     srand(time(0));
@@ -172,10 +186,26 @@ void main(){
     {
         Player human, bot;
         char game_difficulty = set_game_difficulty();
-        printf("game difficulty set to : %c\n",game_difficulty);
+        printf("Game difficulty set to : %c\n",game_difficulty);
 
         printf("Enter your name: ");
-        scanf("%s", human.name);
+        do {
+            scanf("%s", human.name);
+    
+            char lowercase_name[50];
+            strcpy(lowercase_name, human.name);
+            for (int i = 0; lowercase_name[i]; i++) {
+                lowercase_name[i] = tolower(lowercase_name[i]);
+            }
+    
+            // Check if name is "bot" (case-insensitive)
+            if (strcmp(lowercase_name, "bot") == 0) {
+                printf("Sorry, you cannot use 'BOT' as your name. Please choose a different name: ");
+            } else {
+                break;
+            }
+        } while (1);
+        
         stringcopy(bot.name, "BOT");
 
         initialize_player(&human);
@@ -241,6 +271,7 @@ void startGame(Player *human, Player *bot, char game_difficulty ) {
         printf("%s wins!\n", human->name);
     }
     //to find out where each player hid their ships in the end
+    printf("Boards of each player");
     displayBoard(human); 
     displayBoard(bot);
 }
@@ -591,8 +622,16 @@ void botSelectMove(Player *bot, Player *human, char game_difficulty) {
             FireMove(bot, human, x, y, game_difficulty);
             break;
         case 'A':
+            int shipsSunkenBefore = human->numOfShipsSunken;
             ArtilleryMove(bot, human, x, y, game_difficulty);
-            bot->numOfArtillery=0;
+            // Check if a ship was sunk during this move
+            if (human->numOfShipsSunken > shipsSunkenBefore) {
+                // Ship sunk, keep Artillery available for next turn
+                bot->numOfArtillery = 1;
+            } else {
+                // No ship sunk, disable Artillery
+                bot->numOfArtillery = 0;
+            }
             break;
         case 'T':
             TorpedoMove(bot, human, x, y, game_difficulty);
@@ -643,13 +682,13 @@ void selectMove(Player *attacker, Player *defender,char game_difficulty) {
 
         // Validate total input length
         if (strlen(input) > 15) {
-            printf("Input too long. Use format 'MoveType Coordinate' (e.g., Fire A1).\n");
+            printf("Input too long. Use format 'MoveType Coordinate'\n");
             continue;
         }
 
         // Parse input
         if (sscanf(input, "%19s %4s", moveType, coordinate) != 2) {
-            printf("Invalid input. Use format 'MoveType Coordinate' (e.g., Fire A1).\n");
+            printf("Use format 'MoveType Coordinate'\n");
             continue;
         }
 
@@ -798,7 +837,7 @@ void HitOrMiss(Player *attacker, Player *defender, int x, int y, char movetype, 
                         defender->hits[i][j] = '*';
                         if (isBot(attacker))
                         {
-                            addAdjacentUnexploredCells(attacker, i, j);
+                            addAdjacentUnexploredCells(attacker,defender, i, j);
                         }
                         
                         // Find the ship using its ID directly
@@ -904,36 +943,54 @@ void stringcopy(char* dest,char* src) {
 //bot logic and functions
 
 char selectBotMoveType(Player *bot) {
+    
+    static int lastMoveWasRadar = 0; // this is  2 avoid consecutive radar usage
+
     if (bot->numOfTorpedo){
         printf("BOT: Torpedo unlocked! Preparing torpedo attack.\n");
+        lastMoveWasRadar = 0;
         return 'T';
     }
     if (bot->numOfArtillery) {
         printf("BOT: Artillery unlocked! Preparing artillery strike.\n");
+        lastMoveWasRadar = 0;
         return 'A';
     }
 
-    
-    if (bot->numOfRadars > 0){
+    if (bot->numOfRadars > 0 && !lastMoveWasRadar) {
         float unexploredPercentage = calculateUnexploredPercentage(bot);
-        if (unexploredPercentage > 0.5)
-        {
-            printf("BOT: Radar available. Scanning for enemy ships.\n");
+        float radarThreshold = calculateRadarThreshold(bot);
+
+        // Add randomness only when 1 radar is left
+        float randomFactor = (bot->numOfRadars == 1) ? ((float)rand() / RAND_MAX) : 0;
+
+        if (unexploredPercentage > radarThreshold || randomFactor < 0.3) {
+            printf("BOT: Radar available. Scanning strategically.\n");
+            lastMoveWasRadar = 1;
             return 'R';
         }
- 
     }
 
     if (bot->numOfShipsSunken > bot->numOfSmokeScreensPerformed) {
         int vulnerabilityScore = calculateVulnerabilityScore(bot);
         if (vulnerabilityScore > 5){//5 is the vulnerability threshold,the lower it is the more dfensive the bot would be
             printf("BOT: Smoke screen ready. Preparing to obscure vulnerable areas.\n");
+            lastMoveWasRadar = 0;
             return 'S';
         } 
     }
     printf("BOT: No special moves available. Performing standard fire attack.\n");
+    lastMoveWasRadar = 0;
     return 'F';  // Default to fire
 }
+
+float calculateRadarThreshold(Player *bot) {
+    float baseThreshold = 0.5; // Base percentage of unexplored cells
+    int remainingShips = TOTALNUMBEROFSHIPS - bot->numOfShipsSunken;
+    if (remainingShips <= 2) baseThreshold += 0.1; // Increase threshold if few ships remain
+    return baseThreshold;
+}
+
 
 float calculateUnexploredPercentage(Player *bot) {
     int unexploredCells = 0;
@@ -964,71 +1021,104 @@ int calculateVulnerabilityScore(Player *bot) {
 
 void selectBotCoordinate(Player *bot, Player *opponent, int *x, int *y, char moveType) {
     switch(moveType) {
-        case 'T': {  // Torpedo strategy: target densest ship area
-            int rowScores[GRID_SIZE] = {0};
-            int colScores[GRID_SIZE] = {0};
-            
-            // Calculate row and column hit density
-            for (int i = 0; i < GRID_SIZE; i++) {
-                for (int j = 0; j < GRID_SIZE; j++) {
-                    if (opponent->board[i][j] != '~') {
-                        rowScores[i]++;
-                        colScores[j]++;
+        case 'T': {  
+            if (!isHuntQueueEmpty(&bot->huntQueue)) {
+                dequeueHunt(&bot->huntQueue, x, y);
+                if (rand() % 2) {//row move
+                    *y = 0;
+                } else { //column
+                    *x = 0;
+                }
+                break;
+            } else {
+                // Randomly decide whether to target a row or column 
+                int targetRow = rand() % 2; // 1 for row, 0 for column
+
+                int rowScores[GRID_SIZE] = {0};
+                int colScores[GRID_SIZE] = {0};
+
+                // Calculate unexplored cells in rows and columns
+                for (int i = 0; i < GRID_SIZE; i++) {
+                    for (int j = 0; j < GRID_SIZE; j++) {
+                        if (opponent->hits[i][j] == '~') {
+                            rowScores[i]++;
+                            colScores[j]++;
+                        }
                     }
                 }
-            }
-            
-            // Find max score row or column
-            int maxRowScore = 0, maxColScore = 0;
-            int maxRowIndex = 0, maxColIndex = 0;
-            
-            for (int i = 0; i < GRID_SIZE; i++) {
-                if (rowScores[i] > maxRowScore) {
-                    maxRowScore = rowScores[i];
-                    maxRowIndex = i;
+
+                // Find the row or column with the maximum unexplored cells
+                if (targetRow == 1) { // Target a row
+                    int maxRowScore = 0;
+                    int maxRowIndex = 0;
+
+                    for (int i = 0; i < GRID_SIZE; i++) {
+                        if (rowScores[i] > maxRowScore) {
+                            maxRowScore = rowScores[i];
+                            maxRowIndex = i;
+                        }
+                    }
+
+                    // Select the first unexplored cell in the chosen row
+                    *x = maxRowIndex;
+                    *y = 0;
+                } else { // Target a column
+                    int maxColScore = 0;
+                    int maxColIndex = 0;
+
+                    for (int j = 0; j < GRID_SIZE; j++) {
+                        if (colScores[j] > maxColScore) {
+                            maxColScore = colScores[j];
+                            maxColIndex = j;
+                        }
+                    }
+
+                    // Select the first unexplored cell in the chosen column
+                    *y = maxColIndex;
+                    *x = 0;
                 }
-                if (colScores[i] > maxColScore) {
-                    maxColScore = colScores[i];
-                    maxColIndex = i;
-                }
-            }
-            
-            // Prefer row or column based on higher score
-            if (maxRowScore >= maxColScore) {
-                *x = maxRowIndex;
-                *y = 0;  // Row move
-            } else {
-                *x = 0;  // Column move
-                *y = maxColIndex;
             }
             break;
         }
+
         
         case 'A': {  // Artillery targets potential ship clusters
-            int bestX = -1, bestY = -1;
-            int maxClusterScore = 0;
-            
-            for (int i = 0; i < GRID_SIZE - 1; i++) {
-                for (int j = 0; j < GRID_SIZE - 1; j++) {
-                    int clusterScore = 0;
-                    for (int di = 0; di <= 1; di++) {
-                        for (int dj = 0; dj <= 1; dj++) {
-                            if (opponent->board[i+di][j+dj] != '~') {
-                                clusterScore++;
+            if (!isHuntQueueEmpty(&bot->huntQueue)) {
+                dequeueHunt(&bot->huntQueue, x, y); // Dequeue the top-left cell of a 2x2 area
+                break;
+            } else {
+                int maxUnexploredDensity = 0;
+                int bestX = -1, bestY = -1;
+                for (int i = 0; i < GRID_SIZE - 1; i++) {
+                    for (int j = 0; j < GRID_SIZE - 1; j++) {
+                        int unexploredCount = 0;
+                        for (int di = 0; di <= 1; di++) {
+                            for (int dj = 0; dj <= 1; dj++) {
+                                if (opponent->hits[i+di][j+dj] == '~') {
+                                    unexploredCount++;
+                                }
                             }
                         }
-                    }
                     
-                    if (clusterScore > maxClusterScore) {
-                        maxClusterScore = clusterScore;
-                        bestX = i;
-                        bestY = j;
+                        if (unexploredCount > maxUnexploredDensity) {
+                            maxUnexploredDensity = unexploredCount;
+                            bestX = i;
+                            bestY = j;
+                        }
                     }
                 }
+
+                if (bestX != -1 && bestY != -1) {
+                    *x = bestX;
+                    *y = bestY; 
+                } else {
+                    // Random fallback
+                    do {
+                        *x = rand() % (GRID_SIZE - 1);
+                        *y = rand() % (GRID_SIZE - 1);
+                    } while (opponent->hits[*x][*y] != '~');
+                }
             }
-            
-            *x = bestX;
-            *y = bestY;
             break;
         }
         
@@ -1066,47 +1156,21 @@ void selectBotCoordinate(Player *bot, Player *opponent, int *x, int *y, char mov
 
         default: {  // Fire move with intelligent targeting
             if (!isHuntQueueEmpty(&bot->huntQueue)) {
-            dequeueHunt(&bot->huntQueue, x, y);
-            break;
+                dequeueHunt(&bot->huntQueue, x, y);
+                break;
             } else {
-            int maxDensity = 0;
-            int bestX = -1, bestY = -1;
-
-            // Scan the grid to find the densest unexplored cluster
-            for (int i = 0; i < GRID_SIZE; i++) {
-                for (int j = 0; j < GRID_SIZE; j++) {
-                    if (bot->hits[i][j] == '~') {  // Only consider unexplored cells
-                        int density = calculateUnexploredDensity(bot->hits, i, j);
-
-                        if (density > maxDensity) {
-                            maxDensity = density;
-                            bestX = i;
-                            bestY = j;
-                        }
-                    }
-                }
-            }
-
-            // If a dense cluster is found, fire there
-            if (bestX != -1 && bestY != -1) {
-                *x = bestX;
-                *y = bestY;
-            } else {
-                // Fallback to pure random (in case all cells are explored)
+                //random 
                 do {
                     *x = rand() % GRID_SIZE;
                     *y = rand() % GRID_SIZE;
-                } while (bot->hits[*x][*y] != '~');
+                } while (opponent->hits[*x][*y] != '~');
             }
+            break;         
         }
-            break;
-        }
-
-
     }   
 }
 
-void addAdjacentUnexploredCells(Player *bot, int x, int y) {
+void addAdjacentUnexploredCells(Player *bot,Player *opponent, int x, int y) {
     int directions[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}}; 
 
     for (int i = 0; i < 4; i++) {
@@ -1116,7 +1180,7 @@ void addAdjacentUnexploredCells(Player *bot, int x, int y) {
         // Check if new cell is within grid bounds
         if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
             // Ensure the cell is unexplored
-            if (bot->hits[newX][newY] == '~') {
+            if (opponent->hits[newX][newY] == '~') {
                 // Check if the cell is already in the queue
                 int isAlreadyQueued = 0;
                 for (int j = bot->huntQueue.front; j <= bot->huntQueue.rear; j++) {
@@ -1142,7 +1206,7 @@ int isBot(Player *player){
         return 1;
     }else{return 0;}
 }
-
+//FOR SMOKE COORDINATES
 void findVulnerableRegions(Player *bot, int *bestX, int *bestY) {
     int maxProtectionScore = 0;
 
@@ -1206,6 +1270,7 @@ int calculateProtectionScore(Player *bot, int x, int y) {
     }
     return score;
 }
+//FOR SMOKE COORDINATES
 void findDenseClusterOrRandom(Player *bot, int *bestX, int *bestY){
     int maxClusterDensity = 0;
 
@@ -1242,25 +1307,5 @@ void findDenseClusterOrRandom(Player *bot, int *bestX, int *bestY){
             *bestY = rand() % GRID_SIZE;
         } while (bot->obscuredArea[*bestX][*bestY] == 'S');  // Avoid previously obscured areas
     }
-}
-
-int calculateUnexploredDensity(char hits[GRID_SIZE][GRID_SIZE], int x, int y) {
-    int density = 0;
-
-    for (int dx = -1; dx <= 1; dx++) {
-        for (int dy = -1; dy <= 1; dy++) {
-            int newX = x + dx;
-            int newY = y + dy;
-
-            // Ensure the coordinates are within grid bounds
-            if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
-                if (hits[newX][newY] == '~') {  // Count unexplored cells
-                    density++;
-                }
-            }
-        }
-    }
-
-    return density;
 }
 
